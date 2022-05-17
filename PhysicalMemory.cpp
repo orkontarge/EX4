@@ -46,7 +46,7 @@ void PMevict(uint64_t frameIndex, uint64_t evictedPageIndex) {
     assert(evictedPageIndex < NUM_PAGES);
     assert(swapFile.find(evictedPageIndex) == swapFile.end());
 
-    swapFile[evictedPageIndex] = RAM[frameIndex];
+    swapFile[evictedPageIndex] = RAM[frameIndex]; //index of evicted: actual frame
 }
 
 void PMrestore(uint64_t frameIndex, uint64_t restoredPageIndex) {
