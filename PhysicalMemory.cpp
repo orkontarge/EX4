@@ -49,6 +49,7 @@ void PMevict(uint64_t frameIndex, uint64_t evictedPageIndex) {
     swapFile[evictedPageIndex] = RAM[frameIndex]; //index of evicted: actual frame
 }
 
+// stores the page in the frame. put in frameIndex, the content of page resorePageIndex, and delete page content
 void PMrestore(uint64_t frameIndex, uint64_t restoredPageIndex) {
     if (RAM.empty()) {
         initialize();

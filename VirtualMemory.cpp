@@ -6,11 +6,12 @@
 
 void VMinitialize(){
     /*
-     * intialize with frame 0 as root, can initialize full tree based on constants sizes, initialize freeframelist range(NUM_FRAMES)
+     * intialize with frame 0 as root, can initialize full tree based on constants sizes,
      * class of pagetable (node in tree) - hold the table, pages number: frame address, pointer to next table, validation
      * store each table in a frameindex.
+     * index of MAX_FRAME (in a page stored in physical memory)
     */
-
+ //TODO how to know which pages are mapped to physical address? for cyclic
 }
 
 
