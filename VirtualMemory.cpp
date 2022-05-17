@@ -28,5 +28,5 @@ int VMread(uint64_t virtualAddress, word_t* value){
      */
 }
 
-
+//TESTING
 // Find an unused frame or evict a page from some frame. return page or index
