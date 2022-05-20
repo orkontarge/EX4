@@ -6,6 +6,8 @@
 #include "PhysicalMemory.h"
 
 
+int traversingTree(uint64_t virtualAddress, uint64_t &addr);
+
 void VMinitialize() {
     for (uint64_t i = 0; i < PAGE_SIZE; i++) {
         PMwrite(i, 0);
@@ -23,19 +25,36 @@ void VMinitialize() {
 
 
 int VMread(uint64_t virtualAddress, word_t *value) {
-    /* frameIndex == 0 == PAGEFAULT -> swap in ->update tree
-     * if virtualAddress in PhysicalAdrees -> if validation bit is True, if frameindex==0:
-     * divide VirtaulAddress into secations, based on table size/width
-     * PMread(0+p1,addr1)
-     * (loop) for each p:
-     *      PMread(add1*PAGE_SIZE+p, add1) check at each point if frameindex is zero.
-     * PMread(...,value)
-     * else:
-     *
-     */
+    uint64_t PMReadingAddress;
+    int isSuccess = traversingTree(virtualAddress, PMReadingAddress);
+    if (isSuccess) {
+        PMread(PMReadingAddress, value);
+    }
+    return isSuccess;
     //TODO: what happens if we don't have what to read
 }
-int VMwrite(uint64_t virtualAddress, word_t value){}
 
+int VMwrite(uint64_t virtualAddress, word_t value) {
+    uint64_t PMWritingAddress;
+    int isSuccess = traversingTree(virtualAddress, PMWritingAddress);
+    if (isSuccess) {
+        PMwrite(PMWritingAddress, value);
+    }
+    return isSuccess;
+}
+
+
+int traversingTree(uint64_t virtualAddress, uint64_t &addr) {
+    /* frameIndex == 0 == PAGEFAULT -> swap in ->update tree
+ * if virtualAddress in PhysicalAdrees -> if validation bit is True, if frameindex==0:
+ * divide VirtaulAddress into secations, based on table size/width
+ * PMread(0+p1,addr1)
+ * (loop) for each p:
+ *      PMread(add1*PAGE_SIZE+p, add1) check at each point if frameindex is zero.
+ * PMread(...,value)
+ * else:
+ *
+ */
+}
 //TESTING -
 // Find an unused frame or evict a page from some frame. return page or index
