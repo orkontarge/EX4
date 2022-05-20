@@ -1,4 +1,4 @@
-# Install script for directory: /home/avigayil/Documents/OS/EX4
+# Install script for directory: /home/or/CLionProjects/OS/EX4
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/avigayil/Documents/OS/EX4/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/or/CLionProjects/OS/EX4/cmake-build-debug/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
