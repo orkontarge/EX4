@@ -1,4 +1,4 @@
-/home/avigayil/Documents/Clion/clion-2021.3.3/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/avigayil/Documents/OS/EX4
+/home/or/clion-2022.1/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/home/or/clion-2022.1/bin/ninja/linux/ninja -G Ninja -S /home/or/CLionProjects/OS/EX4 -B /home/or/CLionProjects/OS/EX4/cmake-build-debug
 -- Configuring done
 -- Generating done
--- Build files have been written to: /home/avigayil/Documents/OS/EX4/cmake-build-debug
+-- Build files have been written to: /home/or/CLionProjects/OS/EX4/cmake-build-debug
