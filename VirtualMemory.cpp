@@ -114,15 +114,15 @@ word_t *treeDFS(word_t *root, word_t depth, uint64_t pageAddress,
                 const word_t *maxDistance) { //TODO: didn't update yet the maxFrame and maxDistance
     //doing DFS while at the same time check all parameters for frame
     if (isFrameContainsOnlyZeros(*root)) {
-        if (frameToNotEvict == nullptr || *root != *frameToNotEvict)
+        if (*root != *frameToNotEvict)
             return root;
         return nullptr;
     }
-    if (depth < TABLES_DEPTH - 1) { //means we didn't come to a leaf  //TODO: I'm not sure about this condition
+    if (depth < TABLES_DEPTH) { //means we didn't come to a leaf  //TODO: I'm not sure about this condition
         for (word_t i = 0; i < PAGE_SIZE; i++) { // iterate over the root's sons
             word_t sonValue = 0;
-            *root = sonValue * PAGE_SIZE; //TODO: need to do something with the long long
-            PMread(*root + i, &sonValue);
+            word_t numberOfFrame = *root * PAGE_SIZE; //TODO: need to do something with the long long
+            PMread(numberOfFrame + i, &sonValue);
             if (sonValue != 0) {
                 word_t *result = treeDFS(root, depth + 1, pageAddress, frameToNotEvict, maxFrame, maxDistance);
                 if (result!= nullptr){
@@ -137,6 +137,9 @@ word_t *treeDFS(word_t *root, word_t depth, uint64_t pageAddress,
 
 word_t findFreeFrame(
         const word_t *parentsPointer) { //TODO: need to notice that we can't evict frames that necessary for the process
+        //TODO: the function dfs returns number of frame of zeros or null
+        //TODO: if null- check if maxFrame smaller then numberFrame constant
+        //TODO: if not- return the number of frame with maximal distance
 
 }
 
