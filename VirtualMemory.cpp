@@ -8,7 +8,7 @@
 
 void traversingTree(uint64_t virtualAddress, word_t *addr);
 
-word_t findFreeFrame(const word_t *parentsPointer); //TODO: need to change word_t
+word_t *findFreeFrame(const word_t *parentsPointer); //TODO: need to change word_t
 
 void restorePage(uint64_t physicalAddress, uint64_t virtualAddress);
 
@@ -89,9 +89,9 @@ void traversingTree(uint64_t virtualAddress,
         uint64_t p = mask & virtualAddress;
         uint64_t frameNum = (currAddress * PAGE_SIZE);
         PMread(frameNum + p, &currAddress);
-        //TODO: need to check if need to check if frameNum is too much big
+        //TODO: need to check if frameNum is too much big
         if (currAddress == 0) {
-            word_t freeFrameAddress = findFreeFrame(preAddress); //TODO: need to implement
+            word_t *freeFrameAddress = findFreeFrame(preAddress); //TODO: need to implement
             //TODO: need to check if a tree can be not full
             if (i < TABLES_DEPTH - 1) { //means that it's not a leaf
                 fillFrameWithValue(freeFrameAddress, 0);
@@ -134,12 +134,61 @@ word_t *treeDFS(word_t *root, word_t depth, uint64_t pageAddress,
     }
 }
 
+/***
+ * checks if there are any unused frames
+ * @return address of unused frame, null pointer if all frames are in use.
+ */
+word_t unusedFrame(){
+    word_t value = 0;
+    word_t numFrameUsed;
+    for (uint64_t i = 0; i < NUM_FRAMES; ++i) { // TODO why in simple test it has a times 2 for NUM_FRAME
+        PMread(i, &numFrameUsed);
+        if (numFrameUsed > value) { // updating number of frames in use
+            value = numFrameUsed;
+        }
+        if (value < NUM_FRAMES) { // didn't use all the frames yet //TODO word_t vs long long??
+            return value + 1; // next unused frame address
+        }
+    }
+    return 0; // frame zero is never free
+        //TODO: what if all were used, but the some were evicted, so high frame number not assigned -> looks like unused
+        // TODO but really it is empty. can it mess with the tree structure?
+}
+
+
+
 
 word_t findFreeFrame(
-        const word_t *parentsPointer) { //TODO: need to notice that we can't evict frames that necessary for the process
+        const word_t *parentsPointer) {
+
+        // if we have an unused frame -> return that address
+        word_t freeAddress = unusedFrame();
+        if (freeAddress != 0){
+            return freeAddress;
+        }
+        else{// if all frames in use -> find an empty frame
+            &freeAddress = treeDFS(word_t *root, word_t depth, uint64_t pageAddress, //TODO: fill properly
+            const word_t *frameToNotEvict, const word_t *maxFrame,
+            const word_t *maxDistance);
+
+            if (&freeAddress != nullptr){
+                return freeAddress
+            }
+            else{
+                // if no empty table -> evict table, find frame to evict with cyclic algorithm
+
+            }
+        }
+
+
+        //TODO: need to notice that we can't evict frames that necessary for the process - delt with in DFS???????????/
         //TODO: the function dfs returns number of frame of zeros or null
+
         //TODO: if null- check if maxFrame smaller then numberFrame constant
         //TODO: if not- return the number of frame with maximal distance
+
+
+
 
 }
 
@@ -156,6 +205,4 @@ bool isFrameContainsOnlyZeros(uint64_t frame) {
 
 
 
-//TESTING -
-// Find an unused frame or evict a page from some frame. return page or index
-//TODO: need to check in total what to do with word_t
+//TODO: word_t vs unit_64???
