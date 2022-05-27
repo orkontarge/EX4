@@ -24,3 +24,6 @@ int VMread(uint64_t virtualAddress, word_t* value);
  * address for any reason)
  */
 int VMwrite(uint64_t virtualAddress, word_t value);
+
+void printTree(); //TODO: delete it
+void printFrame(int frameIndex);//TODO: delete it

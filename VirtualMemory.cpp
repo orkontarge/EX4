@@ -4,34 +4,46 @@
 
 #include "VirtualMemory.h"
 #include "PhysicalMemory.h"
+#include <iostream> //TODO: delete it
 
 #define ROOT 0
 
+void printFrame(word_t frameIndex) {//TODO: delete it
+    std::cout << "FRAME: " << frameIndex << std::endl;
+    for (word_t d = 0; d < PAGE_SIZE; d++) {
+        word_t value;
+        PMread(frameIndex * PAGE_SIZE + d, &value);
+        std::cout << value << " ";
+    }
+    std::cout << "\n";
+}
+
+void printTree() { //TODO:delete it
+    for (uint64_t frame = 0; frame < NUM_FRAMES; frame++) {
+        std::cout << "FRAME: " << frame << std::endl;
+        for (word_t d = 0; d < PAGE_SIZE; d++) {
+            word_t value;
+            PMread(frame * PAGE_SIZE + d, &value);
+            std::cout << value << " ";
+        }
+        std::cout << "\n";
+    }
+}
+
 void traversingTree(uint64_t virtualAddress, word_t *addr);
 
-uint64_t findFreeFrame(const uint64_t virtualAddress, const uint64_t *parentsPointer); //TODO: need to change word_t
+word_t findFreeFrame(uint64_t virtualAddress, const word_t *parentsPointer); //TODO: need to change word_t
 
-void restorePage(uint64_t physicalAddress, uint64_t virtualAddress);
+void restorePage(word_t frameIndex, uint64_t virtualAddress);
 
 bool isFrameContainsOnlyZeros(uint64_t frame);
 
 word_t min(word_t number1, word_t number2);
 
-/**
- * the function does DFS on the tree and find a frame with zeros.
- * Also, update what is the max used frame and what is the biggest distance from a frame that will define by the
- * given address
- * @param root the root of the tree
- * @param depth the depth of the root
- * @param pageAddress the address to looking for
- * @param frameToNotEvict frame that can't be evict
- * @param maxFrame pointer to maxFrame
- * @param pageToEvict pointer to pageToEvict
- * @return  zero's frame. 0 if there aren't any frame like this.
- */
+
 word_t treeDFS(word_t root,
                word_t depth,
-               uint64_t pageAddress, //TODO: check if needed
+               word_t pageToSwapIn,
                word_t frameToNotEvict,
                word_t *maxFrame,
                word_t *pageToEvict);
@@ -42,10 +54,10 @@ void fillFrameWithValue(uint64_t address, word_t value) {
     }
 }
 
-void restorePage(uint64_t physicalAddress, uint64_t virtualAddress) {
+void restorePage(word_t frameIndex, uint64_t virtualAddress) {
     //TODO: need to check if there can be a problem with the input
     uint64_t vmAddress = virtualAddress >> (OFFSET_WIDTH);
-    PMrestore(physicalAddress, vmAddress);
+    PMrestore(frameIndex, vmAddress);
 }
 
 
@@ -83,65 +95,69 @@ int VMwrite(uint64_t virtualAddress, word_t value) { //TODO: NEED TO CHECK IF TH
 
 void traversingTree(uint64_t virtualAddress,
                     word_t *addr) { //TODO: need to check if all tables suppose to be with the same size
-    uint64_t pSize = (VIRTUAL_ADDRESS_WIDTH - OFFSET_WIDTH) / TABLES_DEPTH; //TODO: don't know if the size is accurate
+//    uint64_t pSize = (VIRTUAL_ADDRESS_WIDTH - OFFSET_WIDTH) / TABLES_DEPTH; //TODO: don't know if the size is accurate
+    uint64_t pSize = OFFSET_WIDTH; //TODO: not sure yet
     uint64_t pOnes = (1LL << pSize) - 1;
     uint64_t mask = pOnes << (VIRTUAL_ADDRESS_WIDTH - pSize); //ones with the size of pSize and after that zeros
-    word_t currAddress = 0; //TODO: need to check when its suppose to be int and when uint64_t
-    uint64_t *preAddress = nullptr;
+    word_t pointerFrame = 0;
+    word_t parentFrame;
+    uint64_t currAddress;
     for (uint64_t i = 0; i < TABLES_DEPTH; i++) {
-        uint64_t p = mask & virtualAddress;
-        uint64_t frameNum = (currAddress * PAGE_SIZE);
-        PMread(frameNum + p, &currAddress);
-        //TODO: need to check if frameNum is too much big
-        if (currAddress == 0) {
-            word_t freeFrameAddress = findFreeFrame(virtualAddress, preAddress); //TODO: need to implement
-            //TODO: need to check if a tree can be not full
-            if (i < TABLES_DEPTH) {
-                fillFrameWithValue(freeFrameAddress, 0);
+        uint64_t zerosToAvoid = ((TABLES_DEPTH - i) * pSize);
+        uint64_t p = (mask & virtualAddress) >> zerosToAvoid;
+        uint64_t frameAddress = (pointerFrame * PAGE_SIZE);
+        currAddress = frameAddress + p;
+        parentFrame = pointerFrame;
+        PMread(currAddress, &pointerFrame);
+        if (pointerFrame == 0) {
+            word_t freeFrame = findFreeFrame(virtualAddress, &parentFrame);
+            uint64_t freeFrameAddress = freeFrame * PAGE_SIZE;
+            if (i < TABLES_DEPTH - 1) {
+                fillFrameWithValue(freeFrameAddress,
+                                   0);
             } else {
-                restorePage(virtualAddress, freeFrameAddress);
+                restorePage(freeFrame, virtualAddress);
             }
-            *preAddress = currAddress;
-            PMwrite(*preAddress, freeFrameAddress);
-            currAddress = freeFrameAddress;
+            PMwrite(currAddress, freeFrame);
+            pointerFrame = freeFrame;
         }
 
-        mask >> pSize;
+        mask = mask >> pSize;
     }
     uint64_t dOnes = (1LL << OFFSET_WIDTH) - 1;
     uint64_t d = virtualAddress & dOnes;
-    PMread(currAddress + d, addr);
+    *addr = pointerFrame * PAGE_SIZE + d;
+
 }
 
-word_t treeDFS(word_t root, word_t depth, uint64_t pageAddress,
+word_t treeDFS(word_t root, word_t depth, word_t pageToSwapIn,
                word_t frameToNotEvict, word_t *maxFrame,
-               uint64_t *pageToEvict) { //TODO: didn't update yet the maxFrame and pageToEvict
+               word_t *pageToEvict) { //TODO: didn't update yet the maxFrame and pageToEvict
     //doing DFS while at the same time check all parameters for frame
-    if (isFrameContainsOnlyZeros(root)) {
+    if (isFrameContainsOnlyZeros(root)) { //TODO: check if needs it
         if (root != frameToNotEvict)
             return root;
-        return 0; //means there are not available frames with zeros
+        return 0; //means there are not available frames with zeros in this sub-tree
     }
     if (depth < TABLES_DEPTH) {  //TODO: I'm not sure about this condition
         for (word_t i = 0; i < PAGE_SIZE; i++) { // iterate over the root's sons
             word_t rowValue = 0;
-            word_t frameAddress = root * PAGE_SIZE; //TODO: need to do something with the long long
+            uint64_t frameAddress = root * PAGE_SIZE;
             PMread(frameAddress + i, &rowValue);
             if (rowValue != 0) {
                 if (rowValue > *maxFrame) {
                     *maxFrame = rowValue;
                 }
                 if (depth == TABLES_DEPTH - 1) { // means it is a leaf
-                    word_t distance1 = min((pageAddress - rowValue),
-                                           NUM_PAGES - (pageAddress - rowValue)); //TODO: check long long
-                    word_t distance2 = min((pageAddress - *pageToEvict),
-                                           NUM_PAGES - (pageAddress - *pageToEvict)); //TODO: check long long
+                    word_t distance1 = min((pageToSwapIn - rowValue),
+                                           NUM_PAGES - (pageToSwapIn - rowValue)); //TODO: check long long
+                    word_t distance2 = min((pageToSwapIn - *pageToEvict),
+                                           NUM_PAGES - (pageToSwapIn - *pageToEvict)); //TODO: check long long
                     if (distance1 > distance2) {
                         *pageToEvict = rowValue;
-                        *(pageToEvict+1) = rowValue;
                     }
                 }
-                word_t result = treeDFS(root, depth + 1, pageAddress, frameToNotEvict, maxFrame, pageToEvict);
+                word_t result = treeDFS(rowValue, depth + 1, pageToSwapIn, frameToNotEvict, maxFrame, pageToEvict);
                 if (result != 0) {
                     return result;
                 }
@@ -151,31 +167,8 @@ word_t treeDFS(word_t root, word_t depth, uint64_t pageAddress,
     }
 }
 
-/***
- * checks if there are any unused frames
- * @return address of unused frame, null pointer if all frames are in use.
- */
-//word_t unusedFrame(){ //TODO: maybe delete it
-//    word_t value = 0;
-//    word_t numFrameUsed;
-//    for (uint64_t i = 0; i < NUM_FRAMES; ++i) { // TODO why in simple test it has a times 2 for NUM_FRAME
-//        PMread(i, &numFrameUsed);
-//        if (numFrameUsed > value) { // updating number of frames in use
-//            value = numFrameUsed;
-//        }
-//        if (value < NUM_FRAMES) { // didn't use all the frames yet //TODO word_t vs long long??
-//            return value + 1; // next unused frame address
-//        }
-//    }
-//    return 0; // frame zero is never free
-//        //TODO: what if all were used, but the some were evicted, so high frame number not assigned -> looks like unused
-//        // TODO but really it is empty. can it mess with the tree structure?
-//}
 
-
-
-
-uint64_t findFreeFrame(const uint64_t virtualAddress, const uint64_t *parentsPointer) {
+word_t findFreeFrame(uint64_t virtualAddress, const word_t *parentsPointer) {
 
     // find an empty frame
     // if no empty frame -> find an unused frame -> return that address
@@ -183,18 +176,19 @@ uint64_t findFreeFrame(const uint64_t virtualAddress, const uint64_t *parentsPoi
     if (isFrameContainsOnlyZeros(ROOT)) {
         return 1;
     }
-    uint64_t pageAddress = virtualAddress >> OFFSET_WIDTH;
+    word_t pageNum = virtualAddress >> OFFSET_WIDTH;
     word_t maxFrame = 0;
-    uint64_t pageToEvict[2] = {0,0}; // first index the page. second index the frame where it settled.
-    word_t frameOfZeros = treeDFS(0, 0, pageAddress, *parentsPointer, &maxFrame, pageToEvict);
+    word_t frameToEvict;
+    //is settled.
+    word_t frameOfZeros = treeDFS(0, 0, pageNum, *parentsPointer, &maxFrame, &frameToEvict);
     if (frameOfZeros) {
         return frameOfZeros;
     }
     if (maxFrame < NUM_PAGES - 1) {
-        return maxFrame;
+        return maxFrame + 1;
     } else {
-        PMevict(*(pageToEvict+1),*pageToEvict);
-        return *pageToEvict;
+        PMevict(frameToEvict, pageNum);
+        return frameToEvict;
     }
 
 
