@@ -32,7 +32,7 @@ void printTree() { //TODO:delete it
 
 void traversingTree(uint64_t virtualAddress, word_t *addr);
 
-word_t findFreeFrame(uint64_t virtualAddress, const word_t *parentsPointer); //TODO: need to change word_t
+word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict); //TODO: need to change word_t
 
 void restorePage(word_t frameIndex, uint64_t virtualAddress);
 
@@ -41,12 +41,9 @@ bool isFrameContainsOnlyZeros(uint64_t frame);
 word_t min(word_t number1, word_t number2);
 
 
-word_t treeDFS(word_t root,
-               word_t depth,
-               word_t pageToSwapIn,
-               word_t frameToNotEvict,
-               word_t *maxFrame,
-               word_t *pageToEvict);
+word_t
+treeDFS(word_t root, word_t depth, word_t pageToSwapIn, word_t frameToNotEvict, word_t *maxFrame, word_t *pageToEvict,
+        word_t *parentOfPageToEvict);
 
 void fillFrameWithValue(uint64_t address, word_t value) {
     for (uint64_t i = 0; i < PAGE_SIZE; i++) {
@@ -112,7 +109,7 @@ void traversingTree(uint64_t virtualAddress,
         if (pointerFrame == 0) {
             word_t freeFrame = findFreeFrame(virtualAddress, &parentFrame);
             uint64_t freeFrameAddress = freeFrame * PAGE_SIZE;
-            if (i < TABLES_DEPTH - 1) {
+            if (i <= TABLES_DEPTH - 1) {
                 fillFrameWithValue(freeFrameAddress,
                                    0);
             } else {
@@ -130,9 +127,13 @@ void traversingTree(uint64_t virtualAddress,
 
 }
 
-word_t treeDFS(word_t root, word_t depth, word_t pageToSwapIn,
-               word_t frameToNotEvict, word_t *maxFrame,
-               word_t *pageToEvict) { //TODO: didn't update yet the maxFrame and pageToEvict
+word_t treeDFS(word_t root,
+               word_t depth,
+               word_t pageToSwapIn,
+               word_t frameToNotEvict,
+               word_t *maxFrame,
+               word_t *pageToEvict,
+               word_t *parentOfPageToEvict) { //TODO: didn't update yet the maxFrame and pageToEvict
     //doing DFS while at the same time check all parameters for frame
     if (isFrameContainsOnlyZeros(root)) { //TODO: check if needs it
         if (root != frameToNotEvict)
@@ -149,15 +150,22 @@ word_t treeDFS(word_t root, word_t depth, word_t pageToSwapIn,
                     *maxFrame = rowValue;
                 }
                 if (depth == TABLES_DEPTH - 1) { // means it is a leaf
-                    word_t distance1 = min((pageToSwapIn - rowValue),
-                                           NUM_PAGES - (pageToSwapIn - rowValue)); //TODO: check long long
-                    word_t distance2 = min((pageToSwapIn - *pageToEvict),
-                                           NUM_PAGES - (pageToSwapIn - *pageToEvict)); //TODO: check long long
-                    if (distance1 > distance2) {
+                    if (*pageToEvict == -1) { //TODO: means we didn't fill it
                         *pageToEvict = rowValue;
+                        *parentOfPageToEvict = root;
+                    } else {
+                        word_t distance1 = min((pageToSwapIn - rowValue),
+                                               (NUM_PAGES - (pageToSwapIn - rowValue))); //TODO: check long long
+                        word_t distance2 = min((pageToSwapIn - *pageToEvict),
+                                               (NUM_PAGES - (pageToSwapIn - *pageToEvict))); //TODO: check long long
+                        if (distance1 > distance2) {
+                            *pageToEvict = rowValue;
+                            *parentOfPageToEvict = root;
+                        }
                     }
                 }
-                word_t result = treeDFS(rowValue, depth + 1, pageToSwapIn, frameToNotEvict, maxFrame, pageToEvict);
+                word_t result = treeDFS(rowValue, depth + 1, pageToSwapIn, frameToNotEvict, maxFrame, pageToEvict,
+                                        nullptr);
                 if (result != 0) {
                     return result;
                 }
@@ -168,26 +176,25 @@ word_t treeDFS(word_t root, word_t depth, word_t pageToSwapIn,
 }
 
 
-word_t findFreeFrame(uint64_t virtualAddress, const word_t *parentsPointer) {
+word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
 
-    // find an empty frame
-    // if no empty frame -> find an unused frame -> return that address
-    // if no an unused frame -> evict table, find frame to evict with cyclic algorithm
     if (isFrameContainsOnlyZeros(ROOT)) {
         return 1;
     }
     word_t pageNum = virtualAddress >> OFFSET_WIDTH;
     word_t maxFrame = 0;
-    word_t frameToEvict;
+    word_t frameToEvict = -1;
+    word_t parentOfParentToEvict = -1;
     //is settled.
-    word_t frameOfZeros = treeDFS(0, 0, pageNum, *parentsPointer, &maxFrame, &frameToEvict);
+    word_t frameOfZeros = treeDFS(0, 0, pageNum, *frameToNotEvict, &maxFrame, &frameToEvict, &parentOfParentToEvict);
     if (frameOfZeros) {
         return frameOfZeros;
     }
-    if (maxFrame < NUM_PAGES - 1) {
+    if (maxFrame < NUM_FRAMES - 1) {
         return maxFrame + 1;
     } else {
         PMevict(frameToEvict, pageNum);
+        //TODO: need to delete the parent
         return frameToEvict;
     }
 
@@ -216,9 +223,9 @@ bool isFrameContainsOnlyZeros(uint64_t frame) {
 
 word_t min(word_t number1, word_t number2) {
     if (number1 >= number2) {
-        return number1;
+        return number2;
     }
-    return number2;
+    return number1;
 }
 
 
