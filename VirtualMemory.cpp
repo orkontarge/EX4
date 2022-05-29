@@ -89,10 +89,33 @@ int VMwrite(uint64_t virtualAddress, word_t value) { //TODO: NEED TO CHECK IF TH
     return 1;
 }
 
+uint64_t findFrameOfPage(uint64_t pageNumber) {
+
+    uint64_t virtualAddress = pageNumber * PAGE_SIZE;
+    uint64_t pSize = OFFSET_WIDTH; //TODO: not sure yet
+    uint64_t pOnes = (1LL << pSize) - 1;
+    uint64_t mask = pOnes << (VIRTUAL_ADDRESS_WIDTH - pSize); //ones with the size of pSize and after that zeros
+    word_t pointerFrame = 0;
+    uint64_t currAddress;
+    for (uint64_t i = 0; i < TABLES_DEPTH; i++) {
+        uint64_t zerosToAvoid = ((TABLES_DEPTH - i) * pSize);
+        uint64_t p = (mask & virtualAddress) >> zerosToAvoid;
+        uint64_t frameAddress = (pointerFrame * PAGE_SIZE);
+        currAddress = frameAddress + p;
+        PMread(currAddress, &pointerFrame);
+        if (pointerFrame == 0) {
+            return 0;
+        }
+        mask = mask >> pSize;
+
+    }
+    return pointerFrame;
+}
 
 void traversingTree(uint64_t virtualAddress,
                     word_t *addr) { //TODO: need to check if all tables suppose to be with the same size
 //    uint64_t pSize = (VIRTUAL_ADDRESS_WIDTH - OFFSET_WIDTH) / TABLES_DEPTH; //TODO: don't know if the size is accurate
+    std::cout << "newTraversing\n"; //TODO: delete it
     uint64_t pSize = OFFSET_WIDTH; //TODO: not sure yet
     uint64_t pOnes = (1LL << pSize) - 1;
     uint64_t mask = pOnes << (VIRTUAL_ADDRESS_WIDTH - pSize); //ones with the size of pSize and after that zeros
@@ -100,6 +123,7 @@ void traversingTree(uint64_t virtualAddress,
     word_t parentFrame;
     uint64_t currAddress;
     for (uint64_t i = 0; i < TABLES_DEPTH; i++) {
+        printTree(); //TODO: delete it
         uint64_t zerosToAvoid = ((TABLES_DEPTH - i) * pSize);
         uint64_t p = (mask & virtualAddress) >> zerosToAvoid;
         uint64_t frameAddress = (pointerFrame * PAGE_SIZE);
@@ -120,11 +144,12 @@ void traversingTree(uint64_t virtualAddress,
         }
 
         mask = mask >> pSize;
+        std::cout << "\n"; //TODO: delete it
     }
     uint64_t dOnes = (1LL << OFFSET_WIDTH) - 1;
     uint64_t d = virtualAddress & dOnes;
     *addr = pointerFrame * PAGE_SIZE + d;
-
+    std::cout << "end\n\n\n";
 }
 
 word_t treeDFS(word_t root,
@@ -136,7 +161,7 @@ word_t treeDFS(word_t root,
                word_t *parentOfPageToEvict) { //TODO: didn't update yet the maxFrame and pageToEvict
     //doing DFS while at the same time check all parameters for frame
     if (isFrameContainsOnlyZeros(root)) { //TODO: check if needs it
-        if (root != frameToNotEvict)
+        if (root != frameToNotEvict && (depth < TABLES_DEPTH))
             return root;
         return 0; //means there are not available frames with zeros in this sub-tree
     }
@@ -154,18 +179,22 @@ word_t treeDFS(word_t root,
                         *pageToEvict = rowValue;
                         *parentOfPageToEvict = root;
                     } else {
-                        word_t distance1 = min((pageToSwapIn - rowValue),
-                                               (NUM_PAGES - (pageToSwapIn - rowValue))); //TODO: check long long
+                        word_t distance1 = min((pageToSwapIn - root),
+                                               (NUM_PAGES - (pageToSwapIn - root))); //TODO: check long long
                         word_t distance2 = min((pageToSwapIn - *pageToEvict),
-                                               (NUM_PAGES - (pageToSwapIn - *pageToEvict))); //TODO: check long long
+                                               (NUM_PAGES -
+                                                (pageToSwapIn - *parentOfPageToEvict))); //TODO: check long long
                         if (distance1 > distance2) {
-                            *pageToEvict = rowValue;
+                            *pageToEvict = findFrameOfPage(root);
+                            *parentOfPageToEvict = root;
+                        } else {
+                            *pageToEvict = findFrameOfPage(*parentOfPageToEvict);
                             *parentOfPageToEvict = root;
                         }
                     }
                 }
                 word_t result = treeDFS(rowValue, depth + 1, pageToSwapIn, frameToNotEvict, maxFrame, pageToEvict,
-                                        nullptr);
+                                        parentOfPageToEvict);
                 if (result != 0) {
                     return result;
                 }
@@ -184,17 +213,27 @@ word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
     word_t pageNum = virtualAddress >> OFFSET_WIDTH;
     word_t maxFrame = 0;
     word_t frameToEvict = -1;
-    word_t parentOfParentToEvict = -1;
+    word_t numOfParentOfPageToEvict = -1;
     //is settled.
-    word_t frameOfZeros = treeDFS(0, 0, pageNum, *frameToNotEvict, &maxFrame, &frameToEvict, &parentOfParentToEvict);
-    if (frameOfZeros) {
-        return frameOfZeros;
-    }
+    word_t frameOfZeros = treeDFS(0, 0, pageNum, *frameToNotEvict, &maxFrame, &frameToEvict,
+                                  &numOfParentOfPageToEvict);
+
     if (maxFrame < NUM_FRAMES - 1) {
-        return maxFrame + 1;
+        if (frameOfZeros) {
+            return frameOfZeros;
+        }
+        if (maxFrame < NUM_FRAMES - 1) {
+            return maxFrame + 1;
+        }
     } else {
         PMevict(frameToEvict, pageNum);
-        //TODO: need to delete the parent
+        word_t pointer; //delete the parent
+        for (uint64_t i = 0; i < PAGE_SIZE; i++) {
+            PMread(i + numOfParentOfPageToEvict * PAGE_SIZE, &pointer);
+            if (pointer == frameToEvict) {
+                PMwrite(i + numOfParentOfPageToEvict * PAGE_SIZE, 0);
+            }
+        }
         return frameToEvict;
     }
 
@@ -213,7 +252,7 @@ word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
 bool isFrameContainsOnlyZeros(uint64_t frame) {
     word_t value;
     for (uint64_t i = 0; i < PAGE_SIZE; i++) {
-        PMread(frame + i, &value);
+        PMread(frame * PAGE_SIZE + i, &value);
         if (value != 0) {
             return false;
         }
