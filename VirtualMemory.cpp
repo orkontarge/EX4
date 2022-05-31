@@ -8,6 +8,7 @@
 
 #define ROOT 0
 
+int NUM = 0; //TODO: delete it
 void printFrame(word_t frameIndex) {//TODO: delete it
     std::cout << "FRAME: " << frameIndex << std::endl;
     for (word_t d = 0; d < PAGE_SIZE; d++) {
@@ -26,7 +27,7 @@ void printTree() { //TODO:delete it
             PMread(frame * PAGE_SIZE + d, &value);
             std::cout << value << " ";
         }
-        std::cout << "\n";
+        std::cout << "\n\n\n";
     }
 }
 
@@ -85,6 +86,7 @@ int VMwrite(uint64_t virtualAddress, word_t value) { //TODO: NEED TO CHECK IF TH
     word_t PMWritingAddress;
     traversingTree(virtualAddress, &PMWritingAddress);
     PMwrite(PMWritingAddress, value);
+    printTree(); //TODO: delete it
     return 1;
 }
 
@@ -114,7 +116,7 @@ uint64_t findFrameOfPage(uint64_t pageNumber) {
 void traversingTree(uint64_t virtualAddress,
                     word_t *addr) { //TODO: need to check if all tables suppose to be with the same size
 //    uint64_t pSize = (VIRTUAL_ADDRESS_WIDTH - OFFSET_WIDTH) / TABLES_DEPTH; //TODO: don't know if the size is accurate
-    std::cout << "newTraversing\n"; //TODO: delete it
+
     uint64_t pSize = OFFSET_WIDTH; //TODO: not sure yet
     uint64_t pOnes = (1LL << pSize) - 1;
     uint64_t mask = pOnes << (VIRTUAL_ADDRESS_WIDTH - pSize); //ones with the size of pSize and after that zeros
@@ -122,7 +124,6 @@ void traversingTree(uint64_t virtualAddress,
     word_t parentFrame;
     uint64_t currAddress;
     for (uint64_t i = 0; i < TABLES_DEPTH; i++) {
-        printTree(); //TODO: delete it
         uint64_t zerosToAvoid = ((TABLES_DEPTH - i) * pSize);
         uint64_t p = (mask & virtualAddress) >> zerosToAvoid;
         uint64_t frameAddress = (pointerFrame * PAGE_SIZE);
@@ -136,19 +137,23 @@ void traversingTree(uint64_t virtualAddress,
                 fillFrameWithValue(freeFrameAddress,
                                    0);
             } else {
-                restorePage(freeFrame, virtualAddress);
+                try {//TODO:delete it
+                    restorePage(freeFrame, virtualAddress);
+                }
+                catch(std::exception &e){
+                    std::cout<<"problem with PMRESTORE"<<std::endl;
+                }
             }
             PMwrite(currAddress, freeFrame);
             pointerFrame = freeFrame;
         }
 
         mask = mask >> pSize;
-        std::cout << "\n"; //TODO: delete it
     }
     uint64_t dOnes = (1LL << OFFSET_WIDTH) - 1;
     uint64_t d = virtualAddress & dOnes;
     *addr = pointerFrame * PAGE_SIZE + d;
-    std::cout << "end\n\n\n";
+
 }
 
 word_t
@@ -201,6 +206,7 @@ treeDFS(word_t root, word_t depth, word_t pageToSwapIn, word_t frameToNotEvict, 
         }
         return 0;
     }
+    return 0;
 }
 
 
@@ -236,7 +242,11 @@ word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
         return maxFrame + 1;
     }
     //third case - need to evict page
-    PMevict(frameToEvict, pageToEvict);
+    try{ //TODO: delete it
+    PMevict(frameToEvict, pageToEvict);}
+    catch(std::exception &e){
+        std::cout<<"problem with PMEVICT"<<std::endl;
+    }
     word_t pointer; //delete the parent
     for (uint64_t i = 0; i < PAGE_SIZE; i++) {
         PMread(i + numOfParentOfPageToEvict * PAGE_SIZE, &pointer);
