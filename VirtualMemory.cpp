@@ -72,8 +72,11 @@ void VMinitialize() {
 }
 
 
-int VMread(uint64_t virtualAddress, word_t *value) { //TODO: NEED TO CHECK IF THE SIZE INPUT IS OK
+int VMread(uint64_t virtualAddress, word_t *value) {
     //TODO: need to add scenarios when it return false
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE){
+        return 0;
+    }
     word_t PMReadingAddress;
     traversingTree(virtualAddress, &PMReadingAddress);
     PMread(PMReadingAddress, value);
@@ -81,8 +84,11 @@ int VMread(uint64_t virtualAddress, word_t *value) { //TODO: NEED TO CHECK IF TH
     //TODO: what happens if we don't have what to read
 }
 
-int VMwrite(uint64_t virtualAddress, word_t value) { //TODO: NEED TO CHECK IF THE SIZE INPUT IS OK
-    //TODO: need to add scenarios when it return false
+int VMwrite(uint64_t virtualAddress, word_t value) {
+
+    if (virtualAddress >= VIRTUAL_MEMORY_SIZE){
+        return 0;
+    }
     word_t PMWritingAddress;
     traversingTree(virtualAddress, &PMWritingAddress);
     PMwrite(PMWritingAddress, value);
