@@ -73,13 +73,15 @@ void VMinitialize() {
 
 
 int VMread(uint64_t virtualAddress, word_t *value) {
-    //TODO: need to add scenarios when it return false
+
     if (virtualAddress >= VIRTUAL_MEMORY_SIZE) {
         return 0;
     }
     uint64_t PMReadingAddress;
     traversingTree(virtualAddress, &PMReadingAddress);
+    std::cout << "reading from virtualAddress "<< virtualAddress<< std::endl; //TODO: delete it
     PMread(PMReadingAddress, value);
+    printTree();
     return 1;
     //TODO: what happens if we don't have what to read
 }
@@ -92,6 +94,7 @@ int VMwrite(uint64_t virtualAddress, word_t value) {
     uint64_t PMWritingAddress;
     traversingTree(virtualAddress, &PMWritingAddress);
     PMwrite(PMWritingAddress, value);
+    std::cout << "printing tree after write " << std::endl; //TODO: delete it
     printTree(); //TODO: delete it
     return 1;
 }
@@ -255,12 +258,8 @@ word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
         return maxFrame + 1;
     }
     //third case - need to evict page
-    try { //TODO: delete it
-        PMevict(frameToEvict, pageToEvict);
-    }
-    catch (std::exception &e) {
-        std::cout << "problem with PMEVICT" << std::endl;
-    }
+    PMevict(frameToEvict, pageToEvict);
+
     word_t pointer; //delete the parent
     for (uint64_t i = 0; i < PAGE_SIZE; i++) {
         PMread(i + numOfParentOfPageToEvict * PAGE_SIZE, &pointer);
