@@ -6,7 +6,6 @@
 #include "PhysicalMemory.h"
 #include <iostream> //TODO: delete it
 
-#define ROOT 0
 
 void printFrame(word_t frameIndex) {//TODO: delete it
     std::cout << "FRAME: " << frameIndex << std::endl;
@@ -40,6 +39,25 @@ bool isFrameContainsOnlyZeros(uint64_t frame);
 
 uint64_t min(uint64_t number1, uint64_t number2);
 
+uint64_t absOfMinus(uint64_t num1, uint64_t num2) {
+    if (num1 >= num2) {
+        return num1 - num2;
+    } else {
+        return (num2 - num1);
+    }
+}
+
+uint64_t findP(uint64_t depth, uint64_t &address) {
+    uint64_t pSize = OFFSET_WIDTH;
+    if ((depth == TABLES_DEPTH - 1) && ((VIRTUAL_ADDRESS_WIDTH % OFFSET_WIDTH) != 0)) {
+        pSize = VIRTUAL_ADDRESS_WIDTH % OFFSET_WIDTH;
+    }
+    uint64_t p = address >> (VIRTUAL_ADDRESS_WIDTH - pSize);
+    address <<= pSize;
+    uint64_t shifter = 1 << VIRTUAL_ADDRESS_WIDTH;
+    address &= shifter - 1;
+    return p;
+}
 
 void
 treeDFS(word_t root, word_t depth, word_t frameToNotEvict, word_t *maxFrame, bool *foundEmptyFrame,
@@ -78,8 +96,9 @@ int VMread(uint64_t virtualAddress, word_t *value) {
         return 0;
     }
     uint64_t PMReadingAddress;
-    traversingTree(virtualAddress, &PMReadingAddress);
     std::cout << "reading from virtualAddress " << virtualAddress << std::endl; //TODO: delete it
+
+    traversingTree(virtualAddress, &PMReadingAddress);
     PMread(PMReadingAddress, value);
     printTree();
     return 1;
@@ -94,7 +113,7 @@ int VMwrite(uint64_t virtualAddress, word_t value) {
     uint64_t PMWritingAddress;
     traversingTree(virtualAddress, &PMWritingAddress);
     PMwrite(PMWritingAddress, value);
-    std::cout << "printing tree after writing "<<value << std::endl; //TODO: delete it
+    std::cout << "printing tree after writing " << value << std::endl; //TODO: delete it
     printTree(); //TODO: delete it
     return 1;
 }
@@ -125,27 +144,13 @@ word_t findFrameOfPage(uint64_t pageNumber) {
 void traversingTree(uint64_t virtualAddress,
                     uint64_t *addr) {
 
-    uint64_t pSize = OFFSET_WIDTH; //TODO: not sure yet
-    uint64_t pOnes = (1LL << pSize) - 1;
-    uint64_t mask = pOnes << (VIRTUAL_ADDRESS_WIDTH - pSize); //ones with the size of pSize and after that zeros
+    uint64_t remainAddress = virtualAddress;
     word_t futureFrame = 0;
     word_t parentFrame = 0;
     uint64_t currAddress;
-    uint64_t zerosToAvoid = VIRTUAL_ADDRESS_WIDTH;
     for (uint64_t i = 0; i < TABLES_DEPTH; i++) {
 
-        if (i == (TABLES_DEPTH - 1)) { //case of not the same size pSize
-            uint64_t size = (VIRTUAL_ADDRESS_WIDTH - OFFSET_WIDTH) / TABLES_DEPTH;
-
-            if (size != 0) {
-                pSize = size;
-            }
-            pOnes = (1LL << pSize) - 1;
-            mask = pOnes << (OFFSET_WIDTH);
-        }
-        zerosToAvoid = (zerosToAvoid - pSize);
-
-        uint64_t p = (mask & virtualAddress) >> zerosToAvoid;
+        uint64_t p = findP(i, remainAddress);
         uint64_t frameAddress = (futureFrame * PAGE_SIZE);
         currAddress = frameAddress + p;
         parentFrame = futureFrame;
@@ -163,7 +168,6 @@ void traversingTree(uint64_t virtualAddress,
             futureFrame = freeFrame;
         }
 
-        mask = mask >> pSize;
     }
     uint64_t dOnes = (1LL << OFFSET_WIDTH) - 1;
     uint64_t d = virtualAddress & dOnes;
@@ -204,11 +208,11 @@ treeDFS(word_t root, word_t depth, word_t frameToNotEvict, word_t *maxFrame, boo
                     *pageToEvict = (currAddress << 1) + i;
                 } else {
                     uint64_t leafSon = (currAddress << 1) + i;
-                    uint64_t distance1 = min((pageToSwapIn - leafSon),
-                                             (NUM_PAGES - (pageToSwapIn - leafSon))); //TODO: check long long
-                    uint64_t distance2 = min((pageToSwapIn - *pageToEvict),
+                    uint64_t distance1 = min(absOfMinus(pageToSwapIn, leafSon),
+                                             (NUM_PAGES - absOfMinus(pageToSwapIn, leafSon)));
+                    uint64_t distance2 = min(absOfMinus(pageToSwapIn, *pageToEvict),
                                              (NUM_PAGES -
-                                              (pageToSwapIn - *pageToEvict))); //TODO: check long long
+                                              absOfMinus(pageToSwapIn, *pageToEvict))); //TODO: check long long
                     if (distance1 > distance2) {
                         *pageToEvict = (currAddress << 1) + i;
                         *FrameToEvict = findFrameOfPage(*pageToEvict);
