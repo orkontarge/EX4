@@ -32,7 +32,7 @@ void printTree() { //TODO:delete it
 
 void traversingTree(uint64_t virtualAddress, uint64_t *addr);
 
-word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict); //TODO: need to change word_t
+word_t findFreeFrame(uint64_t virtualAddress, const word_t *parentOfNewFrame); //TODO: need to change word_t
 
 void restorePage(word_t frameIndex, uint64_t virtualAddress);
 
@@ -41,10 +41,10 @@ bool isFrameContainsOnlyZeros(uint64_t frame);
 uint64_t min(uint64_t number1, uint64_t number2);
 
 
-word_t
-treeDFS(word_t root, word_t depth, uint64_t pageToSwapIn, word_t frameToNotEvict, word_t *maxFrame,
-        word_t *FrameToEvict,
-        uint64_t *pageToEvict, word_t *parentOfPageToEvict, word_t *parentOfEmptyTable, uint64_t currAddress);
+void
+treeDFS(word_t root, word_t depth, word_t frameToNotEvict, word_t *maxFrame, bool *foundEmptyFrame,
+        uint64_t currAddress, uint64_t pageToSwapIn, word_t *FrameToEvict, word_t *parentOfPageToEvict,
+        uint64_t *pageToEvict, word_t *frameOfZeros, uint64_t parentOfEmptyFrame);
 
 void fillFrameWithValue(uint64_t address, word_t value) {
     for (uint64_t i = 0; i < PAGE_SIZE; i++) {
@@ -79,7 +79,7 @@ int VMread(uint64_t virtualAddress, word_t *value) {
     }
     uint64_t PMReadingAddress;
     traversingTree(virtualAddress, &PMReadingAddress);
-    std::cout << "reading from virtualAddress "<< virtualAddress<< std::endl; //TODO: delete it
+    std::cout << "reading from virtualAddress " << virtualAddress << std::endl; //TODO: delete it
     PMread(PMReadingAddress, value);
     printTree();
     return 1;
@@ -94,7 +94,7 @@ int VMwrite(uint64_t virtualAddress, word_t value) {
     uint64_t PMWritingAddress;
     traversingTree(virtualAddress, &PMWritingAddress);
     PMwrite(PMWritingAddress, value);
-    std::cout << "printing tree after write " << std::endl; //TODO: delete it
+    std::cout << "printing tree after writing "<<value << std::endl; //TODO: delete it
     printTree(); //TODO: delete it
     return 1;
 }
@@ -128,8 +128,8 @@ void traversingTree(uint64_t virtualAddress,
     uint64_t pSize = OFFSET_WIDTH; //TODO: not sure yet
     uint64_t pOnes = (1LL << pSize) - 1;
     uint64_t mask = pOnes << (VIRTUAL_ADDRESS_WIDTH - pSize); //ones with the size of pSize and after that zeros
-    word_t pointerFrame = 0;
-    word_t parentFrame;
+    word_t futureFrame = 0;
+    word_t parentFrame = 0;
     uint64_t currAddress;
     uint64_t zerosToAvoid = VIRTUAL_ADDRESS_WIDTH;
     for (uint64_t i = 0; i < TABLES_DEPTH; i++) {
@@ -143,14 +143,14 @@ void traversingTree(uint64_t virtualAddress,
             pOnes = (1LL << pSize) - 1;
             mask = pOnes << (OFFSET_WIDTH);
         }
-        zerosToAvoid =  (zerosToAvoid - pSize);
+        zerosToAvoid = (zerosToAvoid - pSize);
 
         uint64_t p = (mask & virtualAddress) >> zerosToAvoid;
-        uint64_t frameAddress = (pointerFrame * PAGE_SIZE);
+        uint64_t frameAddress = (futureFrame * PAGE_SIZE);
         currAddress = frameAddress + p;
-        parentFrame = pointerFrame;
-        PMread(currAddress, &pointerFrame);
-        if (pointerFrame == 0) {
+        parentFrame = futureFrame;
+        PMread(currAddress, &futureFrame);
+        if (futureFrame == 0) {
             word_t freeFrame = findFreeFrame(virtualAddress, &parentFrame);
             uint64_t freeFrameAddress = freeFrame * PAGE_SIZE;
             if (i < (TABLES_DEPTH - 1)) {
@@ -160,99 +160,106 @@ void traversingTree(uint64_t virtualAddress,
                 restorePage(freeFrame, virtualAddress);
             }
             PMwrite(currAddress, freeFrame);
-            pointerFrame = freeFrame;
+            futureFrame = freeFrame;
         }
 
         mask = mask >> pSize;
     }
     uint64_t dOnes = (1LL << OFFSET_WIDTH) - 1;
     uint64_t d = virtualAddress & dOnes;
-    *addr = pointerFrame * PAGE_SIZE + d;
+    *addr = futureFrame * PAGE_SIZE + d;
 
 }
 
-word_t
-treeDFS(word_t root, word_t depth, uint64_t pageToSwapIn, word_t frameToNotEvict, word_t *maxFrame,
-        word_t *FrameToEvict,
-        uint64_t *pageToEvict, word_t *parentOfPageToEvict, word_t *parentOfEmptyTable, uint64_t currAddress) {
+void
+treeDFS(word_t root, word_t depth, word_t frameToNotEvict, word_t *maxFrame, bool *foundEmptyFrame,
+        uint64_t currAddress, uint64_t pageToSwapIn, word_t *FrameToEvict, word_t *parentOfPageToEvict,
+        uint64_t *pageToEvict, word_t *frameOfZeros, uint64_t parentOfEmptyFrame) {
 
     //doing DFS while at the same time check all parameters for frame
 
-    if (isFrameContainsOnlyZeros(root)) {
-        if (root != frameToNotEvict && (depth < TABLES_DEPTH))
-            return root;
-        return 0; //means there are not available frames with zeros in this sub-tree
+    bool isFrameEmpty = true;
+
+    if (*foundEmptyFrame) {
+        return;
     }
-    if (depth < TABLES_DEPTH) {
-        for (word_t i = 0; i < PAGE_SIZE; i++) { // iterate over the root's sons
-            word_t rowValue = 0;
-            uint64_t frameAddress = root * PAGE_SIZE;
-            PMread(frameAddress + i, &rowValue);
-            if (rowValue != 0) {
-                if (rowValue > *maxFrame) {
-                    *maxFrame = rowValue;
-                }
-                if (depth == TABLES_DEPTH - 1) { // means it is a leaf
-                    if (*FrameToEvict == -1) { //means we didn't fill it
-                        *FrameToEvict = rowValue;
-                        *parentOfPageToEvict = root;
+    if (depth == TABLES_DEPTH) {
+        return;
+    }
+
+    for (word_t i = 0; i < PAGE_SIZE; i++) { // iterate over the root's sons
+        word_t currentRow = 0;
+        uint64_t frameAddress = root * PAGE_SIZE;
+        PMread(frameAddress + i, &currentRow);
+        if (currentRow > *maxFrame) {
+            *maxFrame = currentRow;
+        }
+        if (currentRow != 0) {
+
+            if (depth == TABLES_DEPTH - 1) {
+                // means it is a leaf. Calculate distance between pages for evicting later if needed
+                if (*FrameToEvict == -1) { //means we didn't fill it
+                    *FrameToEvict = currentRow;
+                    *parentOfPageToEvict = root;
+                    *pageToEvict = (currAddress << 1) + i;
+                } else {
+                    uint64_t leafSon = (currAddress << 1) + i;
+                    uint64_t distance1 = min((pageToSwapIn - leafSon),
+                                             (NUM_PAGES - (pageToSwapIn - leafSon))); //TODO: check long long
+                    uint64_t distance2 = min((pageToSwapIn - *pageToEvict),
+                                             (NUM_PAGES -
+                                              (pageToSwapIn - *pageToEvict))); //TODO: check long long
+                    if (distance1 > distance2) {
                         *pageToEvict = (currAddress << 1) + i;
-                    } else {
-                        uint64_t leafSon = (currAddress << 1) + i;
-                        uint64_t distance1 = min((pageToSwapIn - leafSon),
-                                                 (NUM_PAGES - (pageToSwapIn - leafSon))); //TODO: check long long
-                        uint64_t distance2 = min((pageToSwapIn - *pageToEvict),
-                                                 (NUM_PAGES -
-                                                  (pageToSwapIn - *pageToEvict))); //TODO: check long long
-                        if (distance1 > distance2) {
-                            *pageToEvict = (currAddress << 1) + i;
-                            *FrameToEvict = findFrameOfPage(*pageToEvict);
-                            *parentOfPageToEvict = root;
-                        }
+                        *FrameToEvict = findFrameOfPage(*pageToEvict);
+                        *parentOfPageToEvict = root;
                     }
                 }
-                *parentOfEmptyTable = root;
-                word_t result = treeDFS(rowValue, depth + 1, pageToSwapIn, frameToNotEvict, maxFrame, FrameToEvict,
-                                        pageToEvict,
-                                        parentOfPageToEvict, parentOfEmptyTable, (currAddress << 1) + i);
-                if (result != 0) {
-                    return result;
-                }
             }
+            isFrameEmpty = false;
+
+            treeDFS(currentRow, depth + 1, frameToNotEvict, maxFrame, foundEmptyFrame,
+                    (currAddress << 1) + i, pageToSwapIn, FrameToEvict,
+                    parentOfPageToEvict,
+                    pageToEvict, frameOfZeros, root * PAGE_SIZE + i);
         }
-        return 0;
+
     }
-    return 0;
+    if (isFrameEmpty) {
+        if (root == 0) {
+            return;
+        }
+        if (root != frameToNotEvict) {
+            PMwrite(parentOfEmptyFrame, 0);
+            *frameOfZeros = root;
+            *foundEmptyFrame = true;
+        }
+    }
+
 }
 
 
-word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
+word_t findFreeFrame(uint64_t virtualAddress, const word_t *parentOfNewFrame) {
 
-    if (isFrameContainsOnlyZeros(ROOT)) {
-        return 1;
-    }
+
     uint64_t pageNum = virtualAddress >> OFFSET_WIDTH;
     word_t maxFrame = 0;
     word_t frameToEvict = -1;
     word_t numOfParentOfPageToEvict = -1;
     word_t numOfParentOfEmptyTable = -1;
+    word_t freeFrameOfZeros = 0;
     uint64_t pageToEvict = 0;
-    //is settled.
-    word_t frameOfZeros = treeDFS(0, 0, pageNum, *frameToNotEvict, &maxFrame, &frameToEvict, &pageToEvict,
-                                  &numOfParentOfPageToEvict, &numOfParentOfEmptyTable, 0);
+    bool isFrameEmpty = false;
+
+    treeDFS(0, 0, *parentOfNewFrame,
+            &maxFrame, &isFrameEmpty, 0,
+            pageNum, &frameToEvict,
+            &numOfParentOfPageToEvict, &pageToEvict, &freeFrameOfZeros,
+            0);
 
 
-    if (frameOfZeros) {
-        if (maxFrame == NUM_FRAMES - 1) { //which means every frame in used-
-            word_t pointer; //delete the parent
-            for (uint64_t i = 0; i < PAGE_SIZE; i++) {
-                PMread(i + numOfParentOfEmptyTable * PAGE_SIZE, &pointer);
-                if (pointer == frameOfZeros) {
-                    PMwrite(i + numOfParentOfEmptyTable * PAGE_SIZE, 0);
-                }
-            }
-        }
-        return frameOfZeros;
+    if (isFrameEmpty) {
+        return freeFrameOfZeros;
     }
     if (maxFrame < NUM_FRAMES - 1) {
         return maxFrame + 1;
@@ -278,8 +285,6 @@ word_t findFreeFrame(uint64_t virtualAddress, const word_t *frameToNotEvict) {
     //TODO: if not- return the number of frame with maximal distance
 
 
-
-
 }
 
 bool isFrameContainsOnlyZeros(uint64_t frame) {
@@ -301,4 +306,165 @@ uint64_t min(uint64_t number1, uint64_t number2) {
 }
 
 
-//TODO: word_t vs unit_64???
+////TODO: word_t vs unit_64???
+
+//#include "VirtualMemory.h"
+//#include "PhysicalMemory.h"
+//
+//void evictAndReplace(word_t *frameIndex);
+//
+//void clearTable(uint64_t frameIndex) {
+//    for (uint64_t i = 0; i < PAGE_SIZE; ++i) {
+//        PMwrite(frameIndex * PAGE_SIZE + i, 0);
+//    }
+//}
+//
+//void VMinitialize() {
+//    clearTable(0);
+//}
+//
+//void DFS(int depth, word_t *freeFrameIndex, word_t *maxFrameIndex, word_t currentFrame, uint64_t currentFrameParentAddr,
+//         word_t newFrameParent, bool *foundEmptyFrame) {
+//    bool isFrameEmpty = true;
+//    if (*foundEmptyFrame) {
+//        return;
+//    }
+//    if (depth == TABLES_DEPTH){
+//        return;
+//    }
+//    for (int i = 0; i < PAGE_SIZE; i++){
+//        word_t currentRow;
+//        PMread(((uint64_t )currentFrame)*PAGE_SIZE + i, &currentRow);
+//        if (currentRow > *maxFrameIndex){
+//            *maxFrameIndex = currentRow;
+//        }
+//        if (currentRow != 0){
+//            DFS(depth + 1, freeFrameIndex, maxFrameIndex, currentRow, currentFrame * PAGE_SIZE + i, newFrameParent,
+//                foundEmptyFrame);
+//            isFrameEmpty = false;
+//        }
+//    }
+//    if (isFrameEmpty){
+//        if (currentFrame != 0) {
+//            if (currentFrame != newFrameParent){
+//                PMwrite (currentFrameParentAddr, 0); // remove pointer from parent
+//                *freeFrameIndex = currentFrame;
+//                *foundEmptyFrame = true;
+//            }
+//        }
+//    }
+//}
+//
+//
+//void findAvailableFrame(word_t *freeFrame, word_t parentOfNewFrame) {
+//    bool foundEmptyFrame = false;
+//    word_t maxFrame = 0;
+//    DFS(0, freeFrame, &maxFrame, 0, 0, parentOfNewFrame, &foundEmptyFrame);
+//    if (!foundEmptyFrame){
+//        *freeFrame = maxFrame + 1;
+//    }
+//    if (*freeFrame >= NUM_FRAMES) {
+//        evictAndReplace(freeFrame);
+//    }
+//}
+//
+//
+//void findMaxPath(word_t currentFrame, uint64_t currentPage, word_t currentParent, int currentPathWeight, int depth,
+//                 word_t *frameToEvict, uint64_t *pageToEvict, word_t *parentMax, int *maxPathWeight) {
+//    if (depth == TABLES_DEPTH) {
+//        if (currentPathWeight > *maxPathWeight) {
+//            *maxPathWeight = currentPathWeight;
+//            *parentMax = currentParent;
+//            *frameToEvict = currentFrame;
+//            *pageToEvict = currentPage;
+//        }
+//        return;
+//    }
+//    // not a leaf, run on all sons
+//    word_t currentRow = 0;
+//    for (int i = 0; i < PAGE_SIZE; i++) {
+//        PMread(((uint64_t )currentFrame)*PAGE_SIZE + i, &currentRow);
+//        int weight = 1;
+//        if ( currentRow % 2 == 0) {
+//            weight = 1;
+//        }
+//        if (currentRow != 0) {
+//            findMaxPath(currentRow, (currentPage << OFFSET_WIDTH) + i, currentFrame * PAGE_SIZE + i, currentPathWeight + weight, depth + 1, frameToEvict,
+//                        pageToEvict, parentMax, maxPathWeight);
+//        }
+//    }
+//}
+//
+//
+//void evictAndReplace(word_t *frameIndex) {
+//    word_t parent = 0;
+//    int maxPathWeight = 0;
+//    uint64_t pageToEvict = 0;
+//    findMaxPath(0, 0, -1, 0, 0, frameIndex, &pageToEvict, &parent, &maxPathWeight);
+//    PMevict(*frameIndex, pageToEvict);
+//    PMwrite(parent, 0);
+//}
+//
+//
+//uint64_t takeOffset(uint64_t *address, bool firstTime) {
+//    int offsetWidth = OFFSET_WIDTH;
+//    if (firstTime && ((VIRTUAL_ADDRESS_WIDTH % OFFSET_WIDTH) != 0)){
+//        offsetWidth = VIRTUAL_ADDRESS_WIDTH % OFFSET_WIDTH;
+//    }
+//    uint64_t offset = *address >> (VIRTUAL_ADDRESS_WIDTH - offsetWidth);
+//    *address <<= offsetWidth;
+//    uint64_t shifter = 1 << VIRTUAL_ADDRESS_WIDTH;
+//    *address &= shifter - 1;
+//    return offset;
+//}
+//
+//
+//void VMreadWrite(uint64_t virtualAddress, uint64_t *offset, word_t *addr_curr, word_t *addr_future){
+//    uint64_t table_depth = TABLES_DEPTH;
+//    uint64_t originalVirtualAddress = virtualAddress;
+//    bool firstTime = false;
+//    for (uint64_t i = 0; i < table_depth; i++) {
+//        if (i == 0){
+//            firstTime = true;
+//        }
+//        *offset = takeOffset(&virtualAddress, firstTime);
+//        PMread(((uint64_t )(*addr_curr)) * PAGE_SIZE + *offset, addr_future);
+//        if (*addr_future == 0){
+//            findAvailableFrame(addr_future, *addr_curr); // this returns a frame index
+//            clearTable((uint64_t)*addr_future);
+//            if (i == table_depth - 1) {
+//                PMrestore((uint64_t )(*addr_future), (originalVirtualAddress >> OFFSET_WIDTH));
+//            }
+//            PMwrite(((uint64_t )(*addr_curr)) * PAGE_SIZE + *offset, *addr_future);
+//        }
+//        *addr_curr = *addr_future;
+//        firstTime = false;
+//    }
+//    *offset = takeOffset(&virtualAddress, false);
+//}
+//
+//
+//int VMread(uint64_t virtualAddress, word_t* value) {
+//    if (virtualAddress >= VIRTUAL_MEMORY_SIZE){
+//        return 0;
+//    }
+//    uint64_t offset = 0;
+//    word_t addr_curr = 0;
+//    word_t addr_future = 0;
+//    VMreadWrite(virtualAddress, &offset, &addr_curr, &addr_future);
+//    PMread(((uint64_t )addr_curr) * PAGE_SIZE + offset, value);
+//    return 1;
+//}
+//
+//
+//int VMwrite(uint64_t virtualAddress, word_t value) {
+//    if (virtualAddress >= VIRTUAL_MEMORY_SIZE){
+//        return 0;
+//    }
+//    uint64_t offset = 0;
+//    word_t addr_curr = 0;
+//    word_t addr_future;
+//    VMreadWrite(virtualAddress, &offset, &addr_curr, &addr_future);
+//    PMwrite(addr_curr * PAGE_SIZE + offset, value);
+//    return 1;
+//}
