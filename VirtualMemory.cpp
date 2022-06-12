@@ -46,12 +46,15 @@ uint64_t absOfMinus(uint64_t num1, uint64_t num2) {
         return (num2 - num1);
     }
 }
-
-uint64_t findP(uint64_t depth, uint64_t &address) {
+uint64_t findPSize(uint64_t depth){
     uint64_t pSize = OFFSET_WIDTH;
     if ((depth == TABLES_DEPTH - 1) && ((VIRTUAL_ADDRESS_WIDTH % OFFSET_WIDTH) != 0)) {
         pSize = VIRTUAL_ADDRESS_WIDTH % OFFSET_WIDTH;
     }
+    return pSize;
+}
+uint64_t findP(uint64_t depth, uint64_t &address) {
+    uint64_t pSize = findPSize(depth);
     uint64_t p = address >> (VIRTUAL_ADDRESS_WIDTH - pSize);
     address <<= pSize;
     uint64_t shifter = 1 << VIRTUAL_ADDRESS_WIDTH;
@@ -199,22 +202,23 @@ treeDFS(word_t root, word_t depth, word_t frameToNotEvict, word_t *maxFrame, boo
             *maxFrame = currentRow;
         }
         if (currentRow != 0) {
+            uint64_t pSize = findPSize(depth);
 
             if (depth == TABLES_DEPTH - 1) {
                 // means it is a leaf. Calculate distance between pages for evicting later if needed
                 if (*FrameToEvict == -1) { //means we didn't fill it
                     *FrameToEvict = currentRow;
                     *parentOfPageToEvict = root;
-                    *pageToEvict = (currAddress << 1) + i;
+                    *pageToEvict = (currAddress << pSize) + i;
                 } else {
-                    uint64_t leafSon = (currAddress << 1) + i;
+                    uint64_t leafSon = (currAddress << pSize) + i;
                     uint64_t distance1 = min(absOfMinus(pageToSwapIn, leafSon),
                                              (NUM_PAGES - absOfMinus(pageToSwapIn, leafSon)));
                     uint64_t distance2 = min(absOfMinus(pageToSwapIn, *pageToEvict),
                                              (NUM_PAGES -
                                               absOfMinus(pageToSwapIn, *pageToEvict))); //TODO: check long long
                     if (distance1 > distance2) {
-                        *pageToEvict = (currAddress << 1) + i;
+                        *pageToEvict = (currAddress << pSize) + i;
                         *FrameToEvict = findFrameOfPage(*pageToEvict);
                         *parentOfPageToEvict = root;
                     }
@@ -222,8 +226,10 @@ treeDFS(word_t root, word_t depth, word_t frameToNotEvict, word_t *maxFrame, boo
             }
             isFrameEmpty = false;
 
+
+
             treeDFS(currentRow, depth + 1, frameToNotEvict, maxFrame, foundEmptyFrame,
-                    (currAddress << 1) + i, pageToSwapIn, FrameToEvict,
+                    (currAddress << pSize) + i, pageToSwapIn, FrameToEvict,
                     parentOfPageToEvict,
                     pageToEvict, frameOfZeros, root * PAGE_SIZE + i);
         }
